@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Líneas de campo eléctrico</title>
+<style>
+:root{--bg:#f4f0fb;--fg:#2b1d4d;--mut:#766a94;--card:#ffffff;--bd:#ded4f3;--ln:#7c3aed;--bl:#d946ef;--sh:#e5dbfa;--g1:#e9ddff;--on:#fff;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#130e24;--fg:#eee8ff;--mut:#a79bc9;--card:#1d1536;--bd:#382c5e;--ln:#a78bfa;--bl:#f0abfc;--sh:#2e2352;--g1:#2a1d52;--on:#1b1033;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#130e24;--fg:#eee8ff;--mut:#a79bc9;--card:#1d1536;--bd:#382c5e;--ln:#a78bfa;--bl:#f0abfc;--sh:#2e2352;--g1:#2a1d52;--on:#1b1033;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(900px 420px at 15% -8%,var(--g1),transparent 70%),var(--bg);background-attachment:fixed;color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:20px 16px 32px}
+h1{font-size:1.8rem;margin:0 0 6px;letter-spacing:-.01em;background:linear-gradient(90deg,var(--ln),var(--bl));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mut);margin:0 0 18px;font-size:.95rem;max-width:72ch;line-height:1.55}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+button{font:inherit;font-size:.92rem;color:var(--fg);background:var(--card);border:1px solid var(--bd);border-radius:999px;padding:6px 14px;cursor:pointer;transition:background .15s,border-color .15s,transform .1s}button:hover{border-color:var(--ln)}button:active{transform:scale(.97)}
+button[aria-pressed="true"]{background:var(--ln);border-color:var(--ln);color:var(--on);font-weight:600}
+.g{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px}
+@media (max-width:760px){.g{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:14px;box-shadow:0 8px 28px -14px rgba(91,33,182,.45)}
+canvas{display:block;width:100%;height:auto;border-radius:12px;border:1px solid var(--bd)}
+.ctl{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:10px;font-size:.9rem;color:var(--mut)}
+.ctl input{flex:1;min-width:120px;accent-color:var(--ln)}
+h2{font-size:1.15rem;margin:0 0 6px;color:var(--ln)}
+.f{font:600 1rem ui-monospace,Menlo,Consolas,monospace;background:var(--g1);border:1px solid var(--bd);border-left:4px solid var(--ln);border-radius:8px;padding:8px 12px;margin:8px 0;overflow-x:auto;white-space:pre}
+p{margin:6px 0}
+.mut{color:var(--mut);font-size:.88rem}
+</style>
+</head>
+<body>
+<main>
+<h1>Líneas de campo eléctrico</h1>
+<p class="sub">Proyecto didáctico para visualizar el campo eléctrico de distribuciones de carga comunes: carga puntual, anillo, disco, esfera y cilindro (conductores y no conductores). Cada modelo muestra sus líneas de campo en corte 2D o en 3D, la gráfica de |E| y la superficie gaussiana que permite calcularlo; las líneas se trazan numéricamente con Runge-Kutta de 4.º orden.</p>
+<div class="tabs" id="tabs" role="group" aria-label="Distribución de carga"></div>
+<div class="g">
+  <div class="card">
+    <canvas id="c" width="640" height="640" aria-label="Líneas de campo"></canvas>
+    <div class="ctl">
+      <label for="n">Líneas</label><input id="n" type="range" min="8" max="48" value="24">
+      <button id="sg" aria-pressed="false">Carga +</button>
+      <button id="v2" aria-pressed="true">Corte 2D</button><button id="v3" aria-pressed="false">Vista 3D</button><button id="gb" aria-pressed="true">Superficie gaussiana</button>
+    </div>
+    <p class="mut" id="vw"></p>
+  </div>
+  <div>
+    <div class="card">
+      <h2 id="t"></h2>
+      <div class="f" id="f"></div>
+      <p id="d"></p>
+    </div>
+    <div class="card" id="gc" style="margin-top:16px">
+      <h2>Superficie gaussiana</h2>
+      <div class="f" id="gf"></div>
+      <p id="gd"></p>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>Magnitud de E</h2>
+      <canvas id="gr" width="480" height="260" aria-label="Gráfica de E"></canvas>
+      <p class="mut" id="gl"></p>
+    </div>
+  </div>
+</div>
+</main>
+<script>
+const $=s=>document.querySelector(s),TAU=Math.PI*2,L=3;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const circ=(n,r,cx,cz,o=0)=>Array.from({length:n},(_,i)=>[cx+r*Math.cos(o+TAU*i/n),cz+r*Math.sin(o+TAU*i/n)]);
+const sun=(n,R)=>Array.from({length:n},(_,i)=>{const r=R*Math.sqrt((i+.5)/n),a=i*2.39996;return[r*Math.cos(a),r*Math.sin(a)]});
+const line=(n,a,b,z)=>Array.from({length:n},(_,i)=>[a+(b-a)*(i+.5)/n,z]);
+const pt=(x,z)=>{const r2=x*x+z*z+1e-9,k=1/(r2*Math.sqrt(r2));return[x*k,z*k]};
+const cy=R=>(x,z)=>{const r2=x*x+z*z+1e-9,q=r2<R*R?R*R:r2;return[x/q,z/q]};
+// cargas discretas: anillo (96 puntos) y disco (10 anillos concéntricos)
+const RING=Array.from({length:96},(_,i)=>[Math.cos(TAU*i/96),Math.sin(TAU*i/96),1]);
+const DISC=[];for(let i=0;i<10;i++){const r=(i+.5)/10,m=Math.round(72*r)+8;for(let j=0;j<m;j++)DISC.push([r*Math.cos(TAU*j/m),r*Math.sin(TAU*j/m),r/m])}
+const sum=C=>(x,z)=>{let ex=0,ez=0;for(const[cx,cy,w]of C){const dx=x-cx,dy=-cy,d2=dx*dx+dy*dy+z*z+4e-4,k=w/(d2*Math.sqrt(d2));ex+=dx*k;ez+=z*k}return[ex,ez]};
+const S=[
+{n:'Carga puntual',sh:'pt',f:'E = kq / r²',v:'Corte por un plano que contiene la carga.',
+ d:'Las líneas salen radialmente y se separan al alejarse: su densidad cae como 1/r², igual que E.',
+ fld:pt,seeds:n=>circ(n,.06,0,0),g:r=>1/(r*r),gm:4,x:'r',R:0},
+{n:'Anillo',sh:'ring',f:'E(z) = k q z / (z² + a²)^(3/2)',v:'Corte por un plano que contiene al eje del anillo (a = 1).',
+ d:'En el centro E = 0 y no pasa ninguna línea. A lo largo del eje E es máximo en z = a/√2. De lejos el anillo se comporta como una carga puntual.',
+ fld:sum(RING),seeds:n=>[...circ(Math.ceil(n/2),.07,1,0),...circ(Math.ceil(n/2),.07,-1,0,Math.PI)],g:z=>z/Math.pow(z*z+1,1.5),gm:.45,x:'z (eje)',R:0},
+{n:'Disco',sh:'disc',f:'E(z) = (σ / 2ε₀) [1 − z / √(z² + R²)]',v:'Corte por un plano que contiene al eje del disco (R = 1).',
+ d:'Cerca del disco las líneas son casi paralelas y perpendiculares a él (E → σ/2ε₀, como un plano infinito). Lejos, se abren como las de una carga puntual.',
+ fld:sum(DISC),seeds:n=>{const m=Math.ceil(n/2);return[...line(m,-.95,.95,.03),...line(m,-.95,.95,-.03)]},g:z=>1-z/Math.sqrt(z*z+1),gm:1.05,x:'z (eje)',R:0},
+{n:'Esfera conductora',sh:'sph',cond:1,f:'E = 0   (r < R)\nE = kQ / r²   (r > R)',v:'Corte por un plano que pasa por el centro (R = 1).',
+ d:'La carga se acomoda en la superficie y dentro no hay campo ni líneas. Afuera las líneas son perpendiculares a la superficie, como las de una carga puntual en el centro.',
+ fld:pt,seeds:n=>circ(n,1.002,0,0),g:r=>r<1?0:1/(r*r),gm:1.2,x:'r',R:1},
+{n:'Esfera no conductora',sh:'sph',f:'E = kQ r / R³   (r < R)\nE = kQ / r²   (r > R)',v:'Esfera con carga volumétrica uniforme (R = 1).',
+ d:'Las líneas nacen en todo el volumen. Por Gauss solo cuenta la carga encerrada, (r/R)³·Q, así que E crece linealmente hasta la superficie y luego cae como 1/r².',
+ fld:(x,z)=>x*x+z*z<1?[x,z]:pt(x,z),seeds:n=>sun(n,.96),g:r=>r<1?r:1/(r*r),gm:1.2,x:'r',R:1},
+{n:'Cilindro conductor',sh:'cyl',cond:1,f:'E = 0   (r < R)\nE = λ / (2πε₀ r)   (r > R)',v:'Cilindro infinito visto a lo largo de su eje (R = 0.8).',
+ d:'Igual que la esfera de metal: la carga está en la superficie y adentro E = 0. Afuera el campo es radial y decae como 1/r, el de un hilo infinito.',
+ fld:cy(.8),seeds:n=>circ(n,.802,0,0),g:r=>r<.8?0:1/r,gm:1.5,x:'r',R:.8},
+{n:'Cilindro no conductor',sh:'cyl',f:'E = λ r / (2πε₀ R²)   (r < R)\nE = λ / (2πε₀ r)   (r > R)',v:'Cilindro infinito con carga volumétrica uniforme, visto a lo largo de su eje (R = 0.8).',
+ d:'Las líneas nacen en todo el volumen. Dentro E crece linealmente con r (carga encerrada ∝ r²) y afuera cae como 1/r.',
+ fld:cy(.8),seeds:n=>sun(n,.77),g:r=>r<.8?r/.64:1/r,gm:1.5,x:'r',R:.8}
+];
+let cur=0,sg=1,lines=[];
+function trace(f,x,z){const P=[[x,z]],h=.05,u=(a,b)=>{const v=f(a,b),m=Math.hypot(v[0],v[1]);return m<1e-12?[0,0]:[v[0]/m,v[1]/m]};
+ for(let i=0;i<320;i++){const k1=u(x,z),k2=u(x+h/2*k1[0],z+h/2*k1[1]),k3=u(x+h/2*k2[0],z+h/2*k2[1]),k4=u(x+h*k3[0],z+h*k3[1]);
+  const dx=h/6*(k1[0]+2*k2[0]+2*k3[0]+k4[0]),dz=h/6*(k1[1]+2*k2[1]+2*k3[1]+k4[1]);
+  if(!dx&&!dz)break;x+=dx;z+=dz;P.push([x,z]);if(Math.abs(x)>L||Math.abs(z)>L)break}
+ return P}
+function build(){const s=S[cur],n=+$('#n').value;if(gv=='3d')lines3=G[cur].s3(n).map(p=>trace3(G[cur].f3,p));else lines=s.seeds(n).map(p=>trace(s.fld,p[0],p[1]));graph();draw()}
+function draw(){gv=='3d'?draw3():draw2()}
+function draw2(){const s=S[cur],c=$('#c'),g=c.getContext('2d'),W=c.width,k=W/(2*L),X=x=>W/2+x*k,Z=z=>W/2-z*k;
+ const fg=css('--fg'),mut=css('--mut'),ln=css('--ln'),bl=css('--bl'),sh=css('--sh'),bd=css('--bd');
+ g.clearRect(0,0,W,W);g.fillStyle=css('--card');g.fillRect(0,0,W,W);
+ g.strokeStyle=bd;g.lineWidth=1;g.setLineDash([4,5]);g.beginPath();g.moveTo(0,Z(0));g.lineTo(W,Z(0));g.moveTo(X(0),0);g.lineTo(X(0),W);g.stroke();g.setLineDash([]);
+ const col=sg>0?ln:bl;
+ // cuerpo
+ g.lineWidth=2;g.strokeStyle=fg;
+ if(s.sh=='sph'||s.sh=='cyl'){const R=s.sh=='sph'?1:.8;g.beginPath();g.arc(X(0),Z(0),R*k,0,TAU);g.fillStyle=s.cond?sh:col+'22';g.fill();g.lineWidth=s.cond?4:2;g.stroke()}
+ // líneas
+ g.lineWidth=1.6;g.strokeStyle=col;g.fillStyle=col;
+ for(const P of lines){g.beginPath();P.forEach((p,i)=>i?g.lineTo(X(p[0]),Z(p[1])):g.moveTo(X(p[0]),Z(p[1])));g.stroke();
+  let a=0,nx=.8;for(let i=1;i<P.length;i++){a+=Math.hypot(P[i][0]-P[i-1][0],P[i][1]-P[i-1][1]);if(a>nx){nx+=.9;
+   const t=Math.atan2(-(P[i][1]-P[i-1][1]),P[i][0]-P[i-1][0])+(sg>0?0:Math.PI),px=X(P[i][0]),pz=Z(P[i][1]);
+   g.save();g.translate(px,pz);g.rotate(t);g.beginPath();g.moveTo(8,0);g.lineTo(-7,-6);g.lineTo(-7,6);g.fill();g.restore()}}}
+ if(gsOn)gauss2(g,X,Z,k);
+ // carga
+ const dot=(x,z,r)=>{g.beginPath();g.arc(X(x),Z(z),r,0,TAU);g.fillStyle=col;g.fill();g.fillStyle='#fff';g.font='bold 13px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(sg>0?'+':'−',X(x),Z(z)+.5)};
+ if(s.sh=='pt')dot(0,0,10);
+ if(s.sh=='ring'){dot(1,0,8);dot(-1,0,8)}
+ if(s.sh=='disc'){g.lineWidth=7;g.strokeStyle=col;g.lineCap='round';g.beginPath();g.moveTo(X(-1),Z(0));g.lineTo(X(1),Z(0));g.stroke();g.lineCap='butt'}
+ g.fillStyle=mut;g.font='13px sans-serif';g.textAlign='left';g.textBaseline='alphabetic';
+ g.fillText(s.sh=='cyl'?'x':'x',W-16,Z(0)-6);g.fillText(s.sh=='cyl'?'y':'z',X(0)+6,16);
+ cap(g,W,col);graph()}
+function graph(){const s=S[cur],c=$('#gr'),g=c.getContext('2d'),W=c.width,H=c.height,m={l:34,r:12,t:12,b:30},pw=W-m.l-m.r,ph=H-m.t-m.b;
+ const fg=css('--fg'),mut=css('--mut'),ln=css('--ln'),bd=css('--bd');
+ g.clearRect(0,0,W,H);g.fillStyle=css('--card');g.fillRect(0,0,W,H);
+ const X=r=>m.l+r/L*pw,Y=e=>m.t+ph*(1-Math.min(e,s.gm)/s.gm);
+ g.strokeStyle=bd;g.lineWidth=1;g.strokeRect(m.l,m.t,pw,ph);
+ if(s.R){g.setLineDash([4,4]);g.beginPath();g.moveTo(X(s.R),m.t);g.lineTo(X(s.R),m.t+ph);g.stroke();g.setLineDash([]);g.fillStyle=mut;g.font='12px sans-serif';g.textAlign='center';g.fillText('R',X(s.R),H-16)}
+ g.strokeStyle=ln;g.lineWidth=2.4;g.beginPath();let st=0;
+ for(let i=0;i<=300;i++){const r=i/300*L,e=s.g(Math.max(r,s.R?0:.02));if(!st){g.moveTo(X(r),Y(e));st=1}else g.lineTo(X(r),Y(e))}g.stroke();
+ g.fillStyle=mut;g.font='12px sans-serif';g.textAlign='center';for(let r=0;r<=L;r++)g.fillText(r,X(r),H-16);
+ g.fillText(s.x,m.l+pw/2,H-3);g.save();g.translate(10,m.t+ph/2);g.rotate(-Math.PI/2);g.fillText('|E| (unid. rel.)',0,0);g.restore();
+ $('#gl').textContent=s.sh=='ring'||s.sh=='disc'?'Valor sobre el eje de simetría; r en unidades de a (o R).':'Distancia r desde el '+(s.sh=='cyl'?'eje':'centro')+', en unidades de a (o R).'}
+function pick(i){cur=i;const s=S[i];document.querySelectorAll('#tabs button').forEach((b,j)=>b.setAttribute('aria-pressed',j==i));
+ $('#t').textContent=s.n;$('#f').textContent=s.f;$('#d').textContent=s.d;$('#vw').textContent=gv=='3d'?T3:s.v;$('#gf').textContent=G[i].gf;$('#gd').textContent=G[i].gt;build()}
+S.forEach((s,i)=>{const b=document.createElement('button');b.textContent=s.n;b.onclick=()=>pick(i);$('#tabs').appendChild(b)});
+const T3='Arrastra para girar. En los cilindros infinitos se muestra solo un tramo.';
+let gv='2d',gsOn=true,lines3=[],yw=.6,pc=.5,drag=0,lx=0,ly=0,auto=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+const fib=(m,R)=>Array.from({length:m},(_,i)=>{const z=1-2*(i+.5)/m,r=Math.sqrt(1-z*z),a=i*2.39996;return[R*r*Math.cos(a),R*r*Math.sin(a),R*z]});
+const p3=(x,y,z)=>{const r2=x*x+y*y+z*z+1e-9,k=1/(r2*Math.sqrt(r2));return[x*k,y*k,z*k]};
+const sum3=C=>(x,y,z)=>{let ex=0,ey=0,ez=0;for(const[cx,cy,w]of C){const dx=x-cx,dy=y-cy,d2=dx*dx+dy*dy+z*z+4e-4,k=w/(d2*Math.sqrt(d2));ex+=dx*k;ey+=dy*k;ez+=z*k}return[ex,ey,ez]};
+const c3=R=>(x,y,z)=>{const r2=x*x+y*y+1e-9,q=r2<R*R?R*R:r2;return[x/q,y/q,0]};
+const cir=(r,z,ax,n=48)=>Array.from({length:n+1},(_,i)=>{const a=TAU*i/n,c=r*Math.cos(a),s=r*Math.sin(a);return ax=='z'?[c,s,z]:ax=='x'?[z,c,s]:[c,z,s]});
+const sw=r=>[cir(r,0,'z'),cir(r,0,'x'),cir(r,0,'y'),cir(r*.8,r*.6,'z'),cir(r*.8,-r*.6,'z')];
+const cw=(r,h)=>[cir(r,h,'z'),cir(r,-h,'z'),...Array.from({length:8},(_,i)=>{const a=TAU*i/8,c=r*Math.cos(a),s=r*Math.sin(a);return[[c,s,-h],[c,s,h]]})];
+const ZL=[-.6,0,.6],xy=a=>a.flatMap(([x,y])=>ZL.map(z=>[x,y,z]));
+const G=[
+{f3:p3,s3:n=>fib(n,.06),g:{k:'s',r:1.6},gf:'Esfera de radio r concéntrica\nΦ = E·4πr² = q/ε₀',gt:'E es radial y vale lo mismo en toda la esfera, así que E = q / (4πε₀r²) para cualquier r.'},
+{f3:sum3(RING),s3:n=>{const m=Math.max(4,Math.round(n/3)),o=[];for(let j=0;j<m;j++){const c=Math.cos(TAU*j/m),s=Math.sin(TAU*j/m);for(const[a,b]of[[.05,0],[-.05,0],[0,.05],[0,-.05]])o.push([(1+a)*c,(1+a)*s,b])}return o},g:{k:'s',r:1.6},gf:'Φ = q/ε₀ para cualquier superficie\nque encierre el anillo',gt:'La ley se cumple, pero E cambia de módulo y dirección sobre toda superficie sencilla, así que no permite despejarlo. Se obtiene sumando el campo de cada pedazo del anillo.'},
+{f3:sum3(DISC),s3:n=>sun(n,.95).flatMap(([x,y])=>[[x,y,.03],[x,y,-.03]]),g:{k:'c',r:.4,h:.5,rect:1},gf:'Pastilla que cruza el disco (z ≪ R)\n2EA = σA/ε₀ → E ≈ σ/2ε₀',gt:'Solo cerca del disco, donde parece un plano infinito, la pastilla da E. En general la simetría no alcanza y E se calcula integrando.'},
+{f3:p3,s3:n=>fib(Math.round(n*1.5),1.002),g:{k:'s',r:1.6},gf:'r > R: E·4πr² = Q/ε₀\nr < R: Q_enc = 0 → E = 0',gt:'Esfera concéntrica. Fuera encierra toda la carga; si se achica hasta quedar dentro del metal no encierra nada.'},
+{f3:(x,y,z)=>x*x+y*y+z*z<1?[x,y,z]:p3(x,y,z),s3:n=>Array.from({length:n},(_,i)=>{const z=1-2*(i+.5)/n,r=Math.sqrt(1-z*z),a=i*2.39996,R=.95*Math.cbrt((i*.618034)%1+.001);return[R*r*Math.cos(a),R*r*Math.sin(a),R*z]}),g:{k:'s',r:1.6},gf:'r > R: E·4πr² = Q/ε₀\nr < R: E·4πr² = Q r³/(R³ε₀)',gt:'Esfera concéntrica. Dentro encierra la fracción (r/R)³ de la carga, por eso E crece linealmente con r.'},
+{f3:c3(.8),s3:n=>xy(circ(Math.round(n/2),.802,0,0)),g:{k:'c',r:1.4,h:.8},gf:'r > R: E·2πrL = λL/ε₀\nr < R: Q_enc = 0 → E = 0',gt:'Cilindro coaxial de radio r y largo L. Por las tapas el flujo es cero (E rasante); solo cuenta el costado.'},
+{f3:c3(.8),s3:n=>xy(sun(Math.round(n/2),.77)),g:{k:'c',r:1.4,h:.8},gf:'r > R: E·2πrL = λL/ε₀\nr < R: E·2πrL = λL r²/(R²ε₀)',gt:'Cilindro coaxial. Dentro encierra la fracción (r/R)² de la carga del tramo, así que E crece linealmente con r.'}
+];
+function trace3(f,p){const h=.06,ad=(a,b,t)=>[a[0]+t*b[0],a[1]+t*b[1],a[2]+t*b[2]],u=q=>{const v=f(...q),m=Math.hypot(...v);return m<1e-12?[0,0,0]:v.map(t=>t/m)};let q=p;const P=[q];
+ for(let i=0;i<220;i++){const k1=u(q),k2=u(ad(q,k1,h/2)),k3=u(ad(q,k2,h/2)),k4=u(ad(q,k3,h));q=[0,1,2].map(j=>q[j]+h/6*(k1[j]+2*k2[j]+2*k3[j]+k4[j]));P.push(q);if(q.some(t=>Math.abs(t)>L))break}return P}
+function pr(p,W){const k=W/(2*L)*.85,c=Math.cos(yw),s=Math.sin(yw),a=p[0]*c-p[1]*s,b=p[0]*s+p[1]*c,c2=Math.cos(pc),s2=Math.sin(pc),d=b*c2-p[2]*s2,e=b*s2+p[2]*c2,f=7/(7+d);return[W/2+k*a*f,W/2-k*e*f]}
+function gauss2(g,X,Z,k){const q=G[cur].g;g.save();g.strokeStyle='#0f9d8a';g.fillStyle='rgba(15,157,138,.10)';g.lineWidth=2.5;g.setLineDash([8,5]);g.beginPath();if(q.rect)g.rect(X(-q.r),Z(q.h),2*q.r*k,2*q.h*k);else g.arc(X(0),Z(0),q.r*k,0,TAU);g.fill();g.stroke();g.restore()}
+function draw3(){const s=S[cur],c=$('#c'),g=c.getContext('2d'),W=c.width,col=sg>0?css('--ln'):css('--bl'),fg=css('--fg'),bd=css('--bd');
+ g.clearRect(0,0,W,W);g.fillStyle=css('--card');g.fillRect(0,0,W,W);
+ const poly=(P,st,lw,fl)=>{g.beginPath();P.forEach((p,i)=>{const q=pr(p,W);i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1])});g.strokeStyle=st;g.lineWidth=lw;if(fl){g.fillStyle=fl;g.fill()}g.stroke()};
+ poly([[0,0,-L],[0,0,L]],bd,1);
+ if(s.sh=='pt'){const q=pr([0,0,0],W);g.beginPath();g.arc(q[0],q[1],8,0,TAU);g.fillStyle=col;g.fill()}
+ else if(s.sh=='ring')poly(cir(1,0,'z'),col,4);
+ else if(s.sh=='disc')poly(cir(1,0,'z'),col,2,col+'44');
+ else (s.sh=='sph'?sw(1):cw(.8,1.2)).forEach(P=>poly(P,fg,s.cond?2.5:1.2));
+ g.globalAlpha=.8;for(const P of lines3){poly(P,col,1.3);const m=Math.max(1,P.length>>1),a=pr(P[m-1],W),b=pr(P[m],W),r=Math.atan2(b[1]-a[1],b[0]-a[0]);g.save();g.translate(b[0],b[1]);g.rotate(r+(sg>0?0:Math.PI));g.fillStyle=col;g.beginPath();g.moveTo(9,0);g.lineTo(-7,-6);g.lineTo(-7,6);g.fill();g.restore()}g.globalAlpha=1;
+ if(gsOn){const q=G[cur].g;g.setLineDash([6,4]);(q.k=='s'?sw(q.r):cw(q.r,q.h)).forEach(P=>poly(P,'#0f9d8a',1.8));g.setLineDash([])}cap(g,W,col)}
+function cap(g,W,col){const t=sg>0?'Q > 0 · las líneas salen de la carga':'Q < 0 · las líneas entran a la carga';g.save();g.setLineDash([]);g.font='600 14px system-ui,sans-serif';g.textAlign='left';g.textBaseline='alphabetic';const w=g.measureText(t).width+20;g.globalAlpha=.88;g.fillStyle=css('--bg');g.fillRect(10,W-40,w,28);g.globalAlpha=1;g.fillStyle=col;g.fillText(t,20,W-21);g.restore()}
+function mode(m){gv=m;$('#v2').setAttribute('aria-pressed',m=='2d');$('#v3').setAttribute('aria-pressed',m=='3d');const c=$('#c');c.style.touchAction=m=='3d'?'none':'auto';c.style.cursor=m=='3d'?'grab':'';$('#vw').textContent=m=='3d'?T3:S[cur].v;build()}
+$('#v2').onclick=()=>mode('2d');$('#v3').onclick=()=>mode('3d');
+$('#gb').onclick=e=>{gsOn=!gsOn;e.target.setAttribute('aria-pressed',gsOn);$('#gc').hidden=!gsOn;draw()};
+{const c=$('#c');c.onpointerdown=e=>{if(gv!='3d')return;drag=1;auto=0;c.setPointerCapture(e.pointerId);lx=e.clientX;ly=e.clientY};
+ c.onpointermove=e=>{if(!drag)return;yw+=(e.clientX-lx)*.01;pc=Math.max(-1.4,Math.min(1.4,pc+(e.clientY-ly)*.01));lx=e.clientX;ly=e.clientY;draw3()};
+ c.onpointerup=c.onpointercancel=()=>drag=0}
+(function tick(){if(gv=='3d'&&auto&&!drag){yw+=.006;draw3()}requestAnimationFrame(tick)})();
+$('#n').oninput=build;
+$('#sg').onclick=e=>{sg=-sg;e.target.textContent='Carga '+(sg>0?'+':'−');e.target.setAttribute('aria-pressed',sg<0);draw()};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+pick(0);
+</script>
+</body>
+</html>
